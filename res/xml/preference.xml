@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android" >
+
+	<EditTextPreference
+        android:defaultValue="23401"
+        android:enabled="true"
+        android:numeric="integer"
+        android:key="tcp_listen_port_for_image"
+        android:summary="tcp port setting for receiving image. (1024-65535, default:23401)"
+        android:title="tcp_listen_port_for_image"/>
+        
+	<EditTextPreference
+        android:defaultValue="23402"
+        android:enabled="true"
+        android:numeric="integer"
+        android:key="udp_peer_port_for_send_event"
+        android:summary="udp port setting for send event. (1-65535, default:23402)"
+        android:title="udp_peer_port_for_send_event"/>
+	
+	<CheckBoxPreference
+        android:defaultValue="false"
+        android:enabled="true"
+        android:key="debug_mode"
+        android:summary="enable debug mode (default:disable)"
+        android:title="debug_mode" />
+		
+</PreferenceScreen>

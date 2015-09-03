@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">p5_sumaho_player</string>
+    <string name="app_name_landscape">p5_sumaho_player landscape</string>
+    <string name="app_preference">p5_sumaho_player settings</string>
+
+</resources>
