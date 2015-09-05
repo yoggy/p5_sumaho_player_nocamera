@@ -1,15 +1,13 @@
 package net.sabamiso.p5_sumaho_player_nocamera;
 
+import java.util.List;
+
 import net.sabamiso.p5_sumaho_player.net.Event;
 import net.sabamiso.p5_sumaho_player.net.TCPServer;
 import net.sabamiso.p5_sumaho_player.net.UDPEventClient;
 import net.sabamiso.p5_sumaho_player.net.UpdateBitmapListener;
-import net.sabamiso.p5_sumaho_player.sensor.GravitySensor;
-import net.sabamiso.p5_sumaho_player.sensor.LightSensor;
-import net.sabamiso.p5_sumaho_player.sensor.MagneticFieldSensor;
-import net.sabamiso.p5_sumaho_player.sensor.ProximitySensor;
 import net.sabamiso.utils.Config;
-import android.app.Activity;
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -17,6 +15,10 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Typeface;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Handler;
@@ -25,18 +27,15 @@ import android.view.View;
 import android.widget.Toast;
 
 public class SumahoView extends View implements
-		UpdateBitmapListener, Runnable {
+		UpdateBitmapListener, Runnable, SensorEventListener{
 
 	TCPServer tcp_server;
 	private Bitmap bitmap;
 	Rect bitmap_draw_rect;
 
-	UDPEventClient udp_thread;
+	UDPEventClient udp_event_client;
 
-	GravitySensor gravity_sensor;
-	MagneticFieldSensor magnetic_field_sensor;
-	LightSensor light_sensor;
-	ProximitySensor proximity_sensor;
+	SensorManager sensor_manager;
 	
 	Paint p_default;
 	Paint p_text_center;
@@ -61,6 +60,8 @@ public class SumahoView extends View implements
 		p_text_edge = new Paint();
 		p_text_edge.setColor(Color.BLACK);
 		p_text_edge.setTypeface(Typeface.DEFAULT_BOLD);		
+		
+		sensor_manager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
 	}
 
 	public boolean getDebug() {
@@ -78,6 +79,15 @@ public class SumahoView extends View implements
 		});
 	}
 
+	public void registerListener(SensorEventListener listener, int type) {
+		List<Sensor> sensors;
+		sensors = sensor_manager.getSensorList(type);
+		if (sensors.size() > 0) {
+			Sensor s = sensors.get(0);
+			sensor_manager.registerListener(this, s, SensorManager.SENSOR_DELAY_GAME);
+		}
+	}
+	
 	public void start() {
 		tcp_server = new TCPServer(cf.getInt("tcp_listen_port_for_image", 23401));
 		tcp_server.setUpdateBitmapListener(this);
@@ -91,45 +101,26 @@ public class SumahoView extends View implements
 					.show();
 		}
 
-		udp_thread = new UDPEventClient();
-		udp_thread.setPeerPort(cf.getInt("udp_peer_port_for_send_event",  23402));
-		udp_thread.start();
+		udp_event_client = new UDPEventClient();
+		udp_event_client.setPeerPort(cf.getInt("udp_peer_port_for_send_event",  23402));
+		udp_event_client.start();
 
 		// sensor
-		Activity activity = (Activity)getContext();
-
-		gravity_sensor = new GravitySensor(activity, udp_thread);
-		gravity_sensor.resume();
+		registerListener(this, Sensor.TYPE_GRAVITY);
+		registerListener(this, Sensor.TYPE_MAGNETIC_FIELD);
+		registerListener(this, Sensor.TYPE_LIGHT);
+		registerListener(this, Sensor.TYPE_PROXIMITY);
 		
-		magnetic_field_sensor = new MagneticFieldSensor(activity, udp_thread);
-		magnetic_field_sensor.resume();
-		
-		light_sensor = new LightSensor(activity, udp_thread);
-		light_sensor.resume();
-
-		proximity_sensor = new ProximitySensor(activity, udp_thread);
-		proximity_sensor.resume();
-
 		handler.post(this);
 	}
 
 	public void stop() {
 		handler.removeCallbacks(this);
 		
-		gravity_sensor.pause();
-		gravity_sensor = null;
-		
-		magnetic_field_sensor.pause();
-		magnetic_field_sensor = null;
+		sensor_manager.unregisterListener(this);
 
-		light_sensor.pause();
-		light_sensor = null;
-
-		proximity_sensor.pause();
-		proximity_sensor = null;
-
-		if (udp_thread != null) {
-			udp_thread.finish();
+		if (udp_event_client != null) {
+			udp_event_client.finish();
 		}
 		if (tcp_server != null) {
 			tcp_server.stop();
@@ -260,6 +251,7 @@ public class SumahoView extends View implements
 		return ip_str;
 	}
 
+	@SuppressLint("ClickableViewAccessibility")
 	@Override
 	public boolean onTouchEvent(MotionEvent evt) {
 		int action = evt.getAction() & MotionEvent.ACTION_MASK;
@@ -288,7 +280,7 @@ public class SumahoView extends View implements
 		
 		// check peer name
 		String peer_name = tcp_server.getPeerName();
-		udp_thread.setPeerName(peer_name);
+		udp_event_client.setPeerName(peer_name);
 		
 		handler.postDelayed(this, 500);
 	}
@@ -302,6 +294,30 @@ public class SumahoView extends View implements
 		float px = (x - bitmap_draw_rect.left) / (bitmap_draw_rect.right - bitmap_draw_rect.left);
 		float py = (y - bitmap_draw_rect.top) / (bitmap_draw_rect.bottom - bitmap_draw_rect.top);
 
-		udp_thread.sendTouchEvent(type, id, px, py);		
+		udp_event_client.sendTouchEvent(type, id, px, py);		
+	}
+
+	@Override
+	public void onAccuracyChanged(Sensor sensor, int accuracy) {
+	}
+
+	@Override
+	public void onSensorChanged(SensorEvent evt) {
+		switch(evt.sensor.getType()) {
+		case Sensor.TYPE_GRAVITY:
+			udp_event_client.sendGravityEvent(evt.values[0], evt.values[1], evt.values[2]);
+			break;
+		case Sensor.TYPE_MAGNETIC_FIELD:
+			udp_event_client.sendMagneticFieldEvent(evt.values[0], evt.values[1], evt.values[2]);
+			break;
+		case Sensor.TYPE_LIGHT:
+			udp_event_client.sendLightEvent(evt.values[0]);
+			break;
+		case Sensor.TYPE_PROXIMITY:
+			udp_event_client.sendProximityEvent(evt.values[0]);
+			break;
+		default:
+			break;
+		}
 	}
 }
